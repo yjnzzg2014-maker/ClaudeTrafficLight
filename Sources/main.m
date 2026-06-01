@@ -8,6 +8,7 @@ static NSDate *lastWorkingStart = nil;
 static NSTimeInterval lastWorkingDuration = 0;
 static NSDate *yellowStart = nil;
 static BOOL yellowNotified = NO;
+static NSUInteger frameCount = 0;  // 帧计数器，用于动画
 
 #pragma mark - 绘制（通用）
 
@@ -37,7 +38,6 @@ NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGF
     [[NSColor colorWithWhite:0.1 alpha:0.95] setFill];
     [[NSBezierPath bezierPathWithRoundedRect:inner xRadius:rr * 0.6 yRadius:rr * 0.6] fill];
 
-    CGFloat now = (CGFloat)[[NSDate date] timeIntervalSince1970];
     // 位置映射：左=绿(idle/完成)，中=黄(working/运行)，右=红(input/需确认)
     NSArray *states = @[@"idle", @"working", @"input"];
     NSColor *colors[] = {kColorIdle, kColorWorking, kColorInput};
@@ -59,13 +59,11 @@ NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGF
         if (isActive) {
             CGFloat k;
             if ([active isEqualToString:@"working"]) {
-                // 黄灯跳跃闪烁：明暗交替，0.6秒一个周期
-                CGFloat phase = fmodf(now, 0.6) / 0.6;  // 0~1 循环
-                k = (phase < 0.5) ? 1.0 : 0.2;
+                // 黄灯跳跃闪烁：每6帧切换（约0.6秒）
+                k = ((frameCount / 6) % 2 == 0) ? 1.0 : 0.2;
             } else if ([active isEqualToString:@"input"]) {
-                // 红灯急闪：更快，0.3秒一个周期
-                CGFloat phase = fmodf(now, 0.3) / 0.3;
-                k = (phase < 0.5) ? 1.0 : 0.1;
+                // 红灯急闪：每3帧切换（约0.3秒）
+                k = ((frameCount / 3) % 2 == 0) ? 1.0 : 0.1;
             } else {
                 // 绿灯常亮
                 k = 1.0;
@@ -313,6 +311,7 @@ NSString *formatDuration(NSTimeInterval sec) {
 
     // Animation timer (10fps)
     [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) {
+        frameCount++;
         self.statusItem.button.image = makeSmallImage(currentState);
         self.overlayImageView.image = makeLargeImage(currentState);
     }];
