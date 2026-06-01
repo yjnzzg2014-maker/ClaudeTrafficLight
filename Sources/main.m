@@ -59,11 +59,13 @@ NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGF
         if (isActive) {
             CGFloat k;
             if ([active isEqualToString:@"working"]) {
-                // 黄灯跳跃闪烁：快速明暗交替
-                k = 0.3 + 0.7 * fabsf(sinf(now * 4.0));
+                // 黄灯跳跃闪烁：明暗交替，0.6秒一个周期
+                CGFloat phase = fmodf(now, 0.6) / 0.6;  // 0~1 循环
+                k = (phase < 0.5) ? 1.0 : 0.2;
             } else if ([active isEqualToString:@"input"]) {
-                // 红灯急闪：更快更亮
-                k = 0.15 + 0.85 * fabsf(sinf(now * 6.0));
+                // 红灯急闪：更快，0.3秒一个周期
+                CGFloat phase = fmodf(now, 0.3) / 0.3;
+                k = (phase < 0.5) ? 1.0 : 0.1;
             } else {
                 // 绿灯常亮
                 k = 1.0;
