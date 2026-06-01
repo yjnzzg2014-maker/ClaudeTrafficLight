@@ -17,9 +17,9 @@ static NSColor *kColorIdle;
 
 __attribute__((constructor))
 static void initColors(void) {
-    kColorWorking = [NSColor colorWithRed:0.1 green:0.75 blue:0.25 alpha:1];
-    kColorInput   = [NSColor colorWithRed:1.0 green:0.75 blue:0.1 alpha:1];
-    kColorIdle    = [NSColor colorWithRed:0.9 green:0.15 blue:0.1 alpha:1];
+    kColorIdle    = [NSColor colorWithRed:0.1 green:0.75 blue:0.25 alpha:1];  // 绿：已完成
+    kColorWorking = [NSColor colorWithRed:1.0 green:0.75 blue:0.1 alpha:1];  // 黄：运行中
+    kColorInput   = [NSColor colorWithRed:0.9 green:0.15 blue:0.1 alpha:1];  // 红：需确认
 }
 
 NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGFloat glowScale) {
