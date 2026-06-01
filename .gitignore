@@ -1,0 +1,4 @@
+*.app
+*.dSYM
+/private/tmp/
+.DS_Store
