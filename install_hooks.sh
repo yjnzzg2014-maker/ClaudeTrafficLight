@@ -25,9 +25,13 @@ if 'hooks' not in settings:
 tl_hooks = {
     "SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} idle"}]}],
     "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} idle"}]}],
+    "StopFailure": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} idle"}]}],
+    "PermissionDenied": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} idle"}]}],
+    "PostToolUseFailure": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} idle"}]}],
     "PreToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} working"}]}],
-    "PostToolUse": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} working"}]}],
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} working"}]}],
     "Notification": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} input"}]}],
+    "PermissionRequest": [{"matcher": "", "hooks": [{"type": "command", "command": f"{hook_script} input"}]}],
 }
 
 # Merge: add traffic light hooks, preserving existing ones
