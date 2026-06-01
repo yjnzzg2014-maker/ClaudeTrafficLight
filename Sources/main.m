@@ -1,44 +1,56 @@
 #import <Cocoa/Cocoa.h>
-#import <UserNotifications/UserNotifications.h>
 #import <math.h>
 
 static NSString *const kStateFile = @"/tmp/claude_traffic_light_state";
+static NSString *const kLogFile = @"/tmp/claude_traffic_light.log";
 static NSString *currentState = @"idle";
 static NSDate *lastWorkingStart = nil;
 static NSTimeInterval lastWorkingDuration = 0;
-static NSDate *yellowStart = nil;
-static BOOL yellowNotified = NO;
-static NSUInteger frameCount = 0;  // 帧计数器，用于动画
+static NSDate *inputStart = nil;
+static BOOL inputAlerted = NO;
+static NSUInteger frameCount = 0;
 
-#pragma mark - 绘制（通用）
+void appendLog(NSString *from, NSString *to) {
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateFormat = @"yyyy-MM-dd HH:mm:ss";
+    NSString *time = [fmt stringFromDate:[NSDate date]];
+    NSString *line = [NSString stringWithFormat:@"%@ %@ -> %@\n", time, from, to];
+    NSFileHandle *fh = [NSFileHandle fileHandleForWritingAtPath:kLogFile];
+    if (fh) {
+        [fh seekToEndOfFile];
+        [fh writeData:[line dataUsingEncoding:NSUTF8StringEncoding]];
+        [fh closeFile];
+    } else {
+        [line writeToFile:kLogFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    }
+}
 
+#pragma mark - 绘制
+
+static NSColor *kColorIdle;
 static NSColor *kColorWorking;
 static NSColor *kColorInput;
-static NSColor *kColorIdle;
 
 __attribute__((constructor))
 static void initColors(void) {
-    kColorIdle    = [NSColor colorWithRed:0.1 green:0.75 blue:0.25 alpha:1];  // 绿：已完成
-    kColorWorking = [NSColor colorWithRed:1.0 green:0.75 blue:0.1 alpha:1];  // 黄：运行中
-    kColorInput   = [NSColor colorWithRed:0.9 green:0.15 blue:0.1 alpha:1];  // 红：需确认
+    kColorIdle    = [NSColor colorWithRed:0.1 green:0.75 blue:0.25 alpha:1];  // 绿
+    kColorWorking = [NSColor colorWithRed:1.0 green:0.75 blue:0.1 alpha:1];  // 黄
+    kColorInput   = [NSColor colorWithRed:0.9 green:0.15 blue:0.1 alpha:1];  // 红
 }
 
 NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGFloat glowScale) {
     NSImage *img = [[NSImage alloc] initWithSize:NSMakeSize(w, h)];
     [img lockFocus];
 
-    // Housing
     CGFloat rr = r * 0.8;
     NSRect housing = NSMakeRect(2, 3, w - 4, h - 6);
     [[NSColor colorWithWhite:0.15 alpha:0.92] setFill];
     [[NSBezierPath bezierPathWithRoundedRect:housing xRadius:rr yRadius:rr] fill];
 
-    // Inner
     NSRect inner = NSMakeRect(5, 6, w - 10, h - 12);
     [[NSColor colorWithWhite:0.1 alpha:0.95] setFill];
     [[NSBezierPath bezierPathWithRoundedRect:inner xRadius:rr * 0.6 yRadius:rr * 0.6] fill];
 
-    // 位置映射：左=绿(idle/完成)，中=黄(working/运行)，右=红(input/需确认)
     NSArray *states = @[@"idle", @"working", @"input"];
     NSColor *colors[] = {kColorIdle, kColorWorking, kColorInput};
     CGFloat spacing = (w - 10) / 3.0;
@@ -50,7 +62,6 @@ NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGF
         BOOL isActive = [states[i] isEqualToString:active];
         CGFloat cx = centers[i];
 
-        // Socket
         CGFloat sr = r + r * 0.25;
         NSRect socketRect = NSMakeRect(cx - sr, cy - sr, sr * 2, sr * 2);
         [[NSColor colorWithWhite:0.05 alpha:1] setFill];
@@ -59,17 +70,13 @@ NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGF
         if (isActive) {
             CGFloat k;
             if ([active isEqualToString:@"working"]) {
-                // 黄灯跳跃闪烁：每6帧切换（约0.6秒）
                 k = ((frameCount / 6) % 2 == 0) ? 1.0 : 0.2;
             } else if ([active isEqualToString:@"input"]) {
-                // 红灯急闪：每3帧切换（约0.3秒）
                 k = ((frameCount / 3) % 2 == 0) ? 1.0 : 0.1;
             } else {
-                // 绿灯常亮
                 k = 1.0;
             }
 
-            // Glow
             NSInteger glowCount = (NSInteger)(glowScale * 5);
             CGFloat baseOff = r * 0.2;
             for (NSInteger j = 0; j < glowCount; j++) {
@@ -80,12 +87,10 @@ NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGF
                 [[NSBezierPath bezierPathWithOvalInRect:gRect] fill];
             }
 
-            // Main circle
             NSRect cRect = NSMakeRect(cx - r, cy - r, r * 2, r * 2);
             [[color colorWithAlphaComponent:k] setFill];
             [[NSBezierPath bezierPathWithOvalInRect:cRect] fill];
 
-            // Highlight
             CGFloat hr = r * 0.35;
             NSRect hlRect = NSMakeRect(cx - hr * 0.7, cy - hr * 0.5, hr, hr);
             [[NSColor.whiteColor colorWithAlphaComponent:0.35 * k] setFill];
@@ -101,12 +106,10 @@ NSImage *drawTrafficLight(NSString *active, CGFloat w, CGFloat h, CGFloat r, CGF
     return img;
 }
 
-// 菜单栏用的小尺寸
 NSImage *makeSmallImage(NSString *active) {
     return drawTrafficLight(active, 60, 22, 6, 1.0);
 }
 
-// 悬浮窗用的大尺寸
 NSImage *makeLargeImage(NSString *active) {
     return drawTrafficLight(active, 200, 74, 20, 2.0);
 }
@@ -135,7 +138,7 @@ NSString *formatDuration(NSTimeInterval sec) {
 
 #pragma mark - App
 
-@interface AppDelegate : NSObject <NSApplicationDelegate, UNUserNotificationCenterDelegate>
+@interface AppDelegate : NSObject <NSApplicationDelegate>
 @property (nonatomic, strong) NSStatusItem *statusItem;
 @property (nonatomic, strong) NSWindow *overlayWindow;
 @property (nonatomic, strong) NSImageView *overlayImageView;
@@ -149,14 +152,9 @@ NSString *formatDuration(NSTimeInterval sec) {
     return content ? [content stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] : @"idle";
 }
 
-- (void)sendYellowNotification {
-    UNMutableNotificationContent *c = [[UNMutableNotificationContent alloc] init];
-    c.title = @"Claude Code 需要你的确认";
-    c.body = @"点击此通知切换到终端";
-    c.sound = [UNNotificationSound defaultSound];
-    [UNUserNotificationCenter.currentNotificationCenter
-        addNotificationRequest:[UNNotificationRequest requestWithIdentifier:@"claude-yellow" content:c trigger:nil]
-        withCompletionHandler:nil];
+- (void)playAlertSound {
+    NSSound *sound = [NSSound soundNamed:@"Ping"];
+    if (sound) [sound play];
 }
 
 - (void)openTerminal {
@@ -194,13 +192,11 @@ NSString *formatDuration(NSTimeInterval sec) {
     self.overlayWindow.hasShadow = NO;
     [self.overlayWindow setMovableByWindowBackground:YES];
 
-    // 用 DraggableImageView 替代普通 NSImageView，确保拖拽生效
     self.overlayImageView = [[DraggableImageView alloc] initWithFrame:NSMakeRect(0, 0, w, h)];
     self.overlayImageView.image = makeLargeImage(@"idle");
     self.overlayImageView.imageScaling = NSImageScaleProportionallyUpOrDown;
     self.overlayWindow.contentView = self.overlayImageView;
 
-    // 默认显示
     [self.overlayWindow orderFront:nil];
     self.overlayVisible = YES;
 }
@@ -255,6 +251,9 @@ NSString *formatDuration(NSTimeInterval sec) {
 - (void)tick {
     NSString *state = [self readStateFile];
     BOOL changed = ![state isEqualToString:currentState];
+    if (changed) {
+        appendLog(currentState, state);
+    }
     currentState = state;
 
     if ([state isEqualToString:@"working"]) {
@@ -267,16 +266,16 @@ NSString *formatDuration(NSTimeInterval sec) {
     }
 
     if ([state isEqualToString:@"input"]) {
-        if (!yellowStart) {
-            yellowStart = [NSDate date];
-            yellowNotified = NO;
-        } else if (!yellowNotified && [[NSDate date] timeIntervalSinceDate:yellowStart] > 8) {
-            [self sendYellowNotification];
-            yellowNotified = YES;
+        if (!inputStart) {
+            inputStart = [NSDate date];
+            inputAlerted = NO;
+        } else if (!inputAlerted && [[NSDate date] timeIntervalSinceDate:inputStart] > 8) {
+            [self playAlertSound];
+            inputAlerted = YES;
         }
     } else {
-        yellowStart = nil;
-        yellowNotified = NO;
+        inputStart = nil;
+        inputAlerted = NO;
     }
 
     if (changed) {
@@ -288,35 +287,47 @@ NSString *formatDuration(NSTimeInterval sec) {
 
 #pragma mark 生命周期
 
+static NSString *const kPidFile = @"/tmp/claude_traffic_light.pid";
+
+BOOL checkSingleInstance() {
+    NSString *pidStr = [NSString stringWithContentsOfFile:kPidFile encoding:NSUTF8StringEncoding error:nil];
+    if (pidStr) {
+        int oldPid = [pidStr intValue];
+        if (oldPid > 0) {
+            // 检查进程是否真的在运行（kill(pid, 0) 不发信号，只检测存在性）
+            if (kill(oldPid, 0) == 0 && oldPid != getpid()) {
+                return NO;
+            }
+        }
+    }
+    NSString *myPid = [NSString stringWithFormat:@"%d", getpid()];
+    [myPid writeToFile:kPidFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    return YES;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-    // Icon
+    if (!checkSingleInstance()) {
+        NSLog(@"Another instance is already running, exiting.");
+        [NSApp terminate:nil];
+        return;
+    }
+
     NSString *iconPath = [NSBundle.mainBundle pathForResource:@"ClaudeTrafficLight" ofType:@"icns"];
     if (iconPath) NSApp.applicationIconImage = [[NSImage alloc] initWithContentsOfFile:iconPath];
 
-    // Notifications
-    UNUserNotificationCenter *center = UNUserNotificationCenter.currentNotificationCenter;
-    center.delegate = self;
-    [center requestAuthorizationWithOptions:(UNAuthorizationOptionAlert | UNAuthorizationOptionSound)
-                          completionHandler:^(BOOL granted, NSError *error) {}];
-
-    // Status item
     self.statusItem = [NSStatusBar.systemStatusBar statusItemWithLength:62];
     self.statusItem.button.image = makeSmallImage(@"idle");
     [self.statusItem.button sendActionOn:(NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp)];
 
     [self updateMenu];
-
-    // 悬浮窗
     [self createOverlayWindow];
 
-    // Animation timer (10fps)
     [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) {
         frameCount++;
         self.statusItem.button.image = makeSmallImage(currentState);
         self.overlayImageView.image = makeLargeImage(currentState);
     }];
 
-    // State check timer
     [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *timer) {
         [self tick];
     }];
@@ -324,19 +335,6 @@ NSString *formatDuration(NSTimeInterval sec) {
 
 - (void)openTerminalAction { [self openTerminal]; }
 - (void)toggleOverlayAction { [self toggleOverlay]; [self updateMenu]; }
-
-- (void)userNotificationCenter:(UNUserNotificationCenter *)center
-       didReceiveNotificationResponse:(UNNotificationResponse *)response
-                withCompletionHandler:(void (^)(void))completionHandler {
-    [self openTerminal];
-    completionHandler();
-}
-
-- (void)userNotificationCenter:(UNUserNotificationCenter *)center
-       willPresentNotification:(UNNotification *)notification
-                withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler {
-    completionHandler(UNNotificationPresentationOptionBanner | UNNotificationPresentationOptionSound);
-}
 
 @end
 

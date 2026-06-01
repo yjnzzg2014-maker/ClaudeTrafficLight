@@ -17,7 +17,6 @@ clang -o "$APP_DIR/Contents/MacOS/ClaudeTrafficLight" \
     "$SCRIPT_DIR/Sources/main.m" \
     -isysroot "$SDK" \
     -framework Cocoa \
-    -framework UserNotifications \
     -fobjc-arc \
     -O2
 
